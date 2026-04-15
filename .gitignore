@@ -1,0 +1,38 @@
+# Секреты (Самое важное!)
+.env
+.env.*
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+id_ecdsa
+secrets.py
+**/*secret*
+**/*token*
+.skadik.local.conf
+local.conf
+.secrets/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Логи и временные файлы
+*.log
+*.pid
+*.tmp
+tmp/
+temp/
+
+# Если будешь использовать Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Настройки самого Cursor/VS Code
+.vscode/
