@@ -8,6 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 SCRIPT_INSTALL_DIR="/opt/skadik"
 SCRIPT_INSTALL_PATH="${SCRIPT_INSTALL_DIR}/Install_node.sh"
+SCRIPT_COMMAND_PATH="/usr/local/bin/skadik"
 
 # --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 D_PANEL_IP=""
@@ -54,6 +55,15 @@ EOF
         echo -e "${YELLOW}Создан конфиг: $home_config${NC}"
         echo -e "${YELLOW}Заполните параметры при необходимости и перезапустите скрипт.${NC}"
     fi
+}
+
+ensure_global_command() {
+    sudo mkdir -p "$(dirname "$SCRIPT_COMMAND_PATH")"
+    sudo tee "$SCRIPT_COMMAND_PATH" > /dev/null <<EOF
+#!/bin/bash
+exec bash "$SCRIPT_INSTALL_PATH" "\$@"
+EOF
+    sudo chmod +x "$SCRIPT_COMMAND_PATH"
 }
 
 # --- ФУНКЦИИ МОНИТОРИНГА ---
@@ -182,7 +192,9 @@ update_script() {
     
     if [ $? -eq 0 ]; then
         sudo chmod +x "$SCRIPT_INSTALL_PATH"
+        ensure_global_command
         echo -e "${GREEN}Обновление успешно: $SCRIPT_INSTALL_PATH${NC}"
+        echo -e "${GREEN}Команда доступна глобально: $SCRIPT_COMMAND_PATH${NC}"
         echo -e "${GREEN}Перезапуск...${NC}"
         sleep 1
         exec bash "$SCRIPT_INSTALL_PATH"
@@ -382,6 +394,7 @@ show_menu() {
 
 while true; do
     clear
+    ensure_global_command
     load_local_config
     show_menu
     echo -e "\n${YELLOW}Нажмите Enter, чтобы вернуться в меню...${NC}"
