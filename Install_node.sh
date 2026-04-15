@@ -123,8 +123,8 @@ check_status() {
     echo -e "${BLUE}----------------------------------------------------${NC}"
     echo -e "${YELLOW}Внешние порты и уровень доступа:${NC}"
 
-    # Получаем список слушающих сокетов, фильтруя системные и локальные порты
-    mapfile -t listeners < <(sudo ss -tuln | awk 'NR>1 {print $1, $5}' | grep -vE ':(53|68|123|5353) ' | grep -v '127\.0\.0\.' | grep -v '\[::1\]')
+    # Получаем список слушающих сокетов.
+    mapfile -t listeners < <(sudo ss -tuln | awk 'NR>1 {print $1, $5}')
 
     if [ ${#listeners[@]} -eq 0 ]; then
         echo -e "${RED}Нет слушающих портов (кроме возможно локальных)${NC}"
@@ -143,6 +143,20 @@ check_status() {
                 addr="${addr_port%:*}"
             fi
             [[ -z "$port" || "$port" -eq 0 ]] && continue
+
+            # Пропускаем шумные системные порты и loopback.
+            case "$port" in
+                53|68|123|5353) continue ;;
+            esac
+            if [[ "$addr" == "127.0.0.1" || "$addr" == "::1" || "$addr" == "localhost" ]]; then
+                continue
+            fi
+            # Скрываем динамические порты (ephemeral), кроме основных портов из конфига.
+            if [[ "$port" -ge 32768 && "$port" -le 65535 ]]; then
+                if [[ "$port" != "$D_NODE_PORT" && "$port" != "$D_VLESS_PORT" && "$port" != "$D_SSH_PORT" && "$port" != "$D_BESZEL_PORT" ]]; then
+                    continue
+                fi
+            fi
 
             # Определяем тип привязки
             access_type=""
