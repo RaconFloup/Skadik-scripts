@@ -66,6 +66,28 @@ EOF
     sudo chmod +x "$SCRIPT_COMMAND_PATH"
 }
 
+ui_line() {
+    printf '%b\n' "${BLUE}============================================================${NC}"
+}
+
+ui_title() {
+    local text="$1"
+    ui_line
+    printf '%b\n' "${GREEN}  ${text}${NC}"
+    ui_line
+}
+
+ui_section() {
+    local text="$1"
+    printf '%b\n' "${BLUE}[ ${text} ]${NC}"
+}
+
+ui_option() {
+    local key="$1"
+    local text="$2"
+    printf "  ${YELLOW}%2s)${NC} %s\n" "$key" "$text"
+}
+
 # --- ФУНКЦИИ МОНИТОРИНГА ---
 
 check_status() {
@@ -353,28 +375,29 @@ install_node() {
 
 show_menu() {
     local beszel_port_display="${D_BESZEL_PORT:-не задан}"
-    echo -e "${BLUE}====================================================${NC}"
-    echo -e "${GREEN}            SKADIK HUB - ПАНЕЛЬ УПРАВЛЕНИЯ          ${NC}"
-    echo -e "${BLUE}====================================================${NC}"
-    
-    echo -e "${BLUE}[ МОНИТОРИНГ ]${NC}"
-    echo "  1) Проверить состояние и доступность портов"
-    echo "  2) Запустить тест скорости (Multitest)"
-    
-    echo -e "\n${BLUE}[ УСТАНОВКА КОМПОНЕНТОВ ]${NC}"
-    echo "  3) Экспресс-установка Ноды "
-    echo "  4) Установить только VPN Ноду"
-    echo "  5) Установить Beszel Agent ($beszel_port_display)"
-    
-    echo -e "\n${BLUE}[ НАСТРОЙКА И ОПТИМИЗАЦИЯ ]${NC}"
-    echo "  6) Оптимизация сети (BBR + CAKE + NoIPv6)"
-    echo "  7) Перенастроить Firewall (UFW)"
-    
-    echo -e "\n${BLUE}[ ОБСЛУЖИВАНИЕ ]${NC}"
-    echo "  8) Обновить этот скрипт"
-    echo "  0) Выход"
-    
-    echo -e "${BLUE}====================================================${NC}"
+    ui_title "SKADIK HUB - ПАНЕЛЬ УПРАВЛЕНИЯ"
+
+    ui_section "МОНИТОРИНГ"
+    ui_option "1" "Проверить состояние и доступность портов"
+    ui_option "2" "Запустить тест скорости (Multitest)"
+
+    echo
+    ui_section "УСТАНОВКА КОМПОНЕНТОВ"
+    ui_option "3" "Экспресс-установка ноды"
+    ui_option "4" "Установить только VPN ноду"
+    ui_option "5" "Установить Beszel Agent (порт: $beszel_port_display)"
+
+    echo
+    ui_section "НАСТРОЙКА И ОПТИМИЗАЦИЯ"
+    ui_option "6" "Оптимизация сети (BBR + CAKE + NoIPv6)"
+    ui_option "7" "Перенастроить Firewall (UFW)"
+
+    echo
+    ui_section "ОБСЛУЖИВАНИЕ"
+    ui_option "8" "Обновить этот скрипт"
+    ui_option "0" "Выход"
+
+    ui_line
     echo -ne "${YELLOW}Выберите действие: ${NC}"
     read -r choice
 
