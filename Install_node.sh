@@ -6,6 +6,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+SCRIPT_INSTALL_DIR="/opt/skadik"
+SCRIPT_INSTALL_PATH="${SCRIPT_INSTALL_DIR}/Install_node.sh"
 
 # --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 D_PANEL_IP=""
@@ -16,7 +18,6 @@ D_BESZEL_PORT=""
 D_BESZEL_KEY=""          # Универсальный токен (TOKEN)
 D_BESZEL_SSH_KEY=""      # Публичный SSH-ключ (KEY)
 D_BESZEL_HUB_URL=""      # URL хаба Beszel
-D_GITHUB_TOKEN=""
 
 load_local_config() {
     local script_dir
@@ -45,7 +46,6 @@ D_BESZEL_PORT=""
 D_BESZEL_HUB_URL=""
 D_BESZEL_KEY=""
 D_BESZEL_SSH_KEY=""
-D_GITHUB_TOKEN=""
 EOF
         chmod 600 "$home_config" 2>/dev/null
         source "$home_config"
@@ -173,24 +173,17 @@ check_status() {
 
 update_script() {
     echo -e "${YELLOW}Запрос обновления с GitHub...${NC}"
-    read -s -p "Введите GitHub Token (Enter = из локального конфига): " TEMP_TOKEN
-    echo
-    TEMP_TOKEN="${TEMP_TOKEN:-$D_GITHUB_TOKEN}"
-    if [ -z "$TEMP_TOKEN" ]; then
-        echo -e "${RED}Токен не задан. Добавьте D_GITHUB_TOKEN в локальный конфиг или введите вручную.${NC}"
-        return
-    fi
-
-    sudo curl -f -H "Authorization: token $TEMP_TOKEN" \
-         -H "Accept: application/vnd.github.v3.raw" \
+    sudo mkdir -p "$SCRIPT_INSTALL_DIR"
+    sudo curl -f -H "Accept: application/vnd.github.v3.raw" \
          -L https://api.github.com/repos/RaconFloup/Skadik-scripts/contents/Install_node.sh \
-         -o /usr/local/bin/skadik
+         -o "$SCRIPT_INSTALL_PATH"
     
     if [ $? -eq 0 ]; then
-        sudo chmod +x /usr/local/bin/skadik
-        echo -e "${GREEN}Обновление успешно. Перезапуск...${NC}"
+        sudo chmod +x "$SCRIPT_INSTALL_PATH"
+        echo -e "${GREEN}Обновление успешно: $SCRIPT_INSTALL_PATH${NC}"
+        echo -e "${GREEN}Перезапуск...${NC}"
         sleep 1
-        exec skadik
+        exec bash "$SCRIPT_INSTALL_PATH"
     else
         echo -e "${RED}Ошибка обновления.${NC}"
     fi
@@ -206,10 +199,22 @@ prompt_value() {
     eval "$var_name=\"${input:-$default_value}\""
 }
 
+require_value() {
+    local label="$1"
+    local value="$2"
+    if [ -z "$value" ]; then
+        echo -e "${RED}Ошибка: параметр '${label}' не задан.${NC}"
+        return 1
+    fi
+    return 0
+}
+
 check_docker() {
     if ! command -v docker &> /dev/null; then
         echo -e "${YELLOW}Установка Docker...${NC}"
         sudo curl -fsSL https://get.docker.com | sh
+    else
+        echo -e "${GREEN}Docker уже установлен.${NC}"
     fi
 }
 
@@ -229,27 +234,51 @@ net.core.default_qdisc = $SCHEDULER
 net.ipv4.tcp_congestion_control = bbr
 EOF
         sudo sysctl -p
+    else
+        echo -e "${GREEN}Параметры сетевой оптимизации уже применены.${NC}"
     fi
     echo -e "${GREEN}Оптимизация завершена.${NC}"
 }
 
 install_firewall() {
+    if ! command -v ufw &> /dev/null; then
+        echo -e "${YELLOW}UFW не найден. Устанавливаем...${NC}"
+        sudo apt-get update -y && sudo apt-get install -y ufw
+    else
+        echo -e "${GREEN}UFW уже установлен.${NC}"
+    fi
+
     echo -e "${YELLOW}Настройка правил доступа...${NC}"
     prompt_value PANEL_IP "IP-адрес вашей панели" "$D_PANEL_IP"
     prompt_value NODE_PORT "Порт ноды (Management)" "$D_NODE_PORT"
     prompt_value VLESS_PORT "Порт для клиентов (VLESS)" "$D_VLESS_PORT"
     prompt_value SSH_PORT "Порт SSH" "$D_SSH_PORT"
+    prompt_value BESZEL_PORT "Порт Beszel Agent" "$D_BESZEL_PORT"
+    require_value "PANEL_IP" "$PANEL_IP" || return
+    require_value "NODE_PORT" "$NODE_PORT" || return
+    require_value "VLESS_PORT" "$VLESS_PORT" || return
+    require_value "SSH_PORT" "$SSH_PORT" || return
+    require_value "BESZEL_PORT" "$BESZEL_PORT" || return
     sudo ufw --force reset
     sudo ufw allow from "$PANEL_IP" to any port "$NODE_PORT"
     sudo ufw deny "$NODE_PORT"
     sudo ufw allow "$VLESS_PORT"
     sudo ufw allow "$SSH_PORT"
-    sudo ufw allow "$D_BESZEL_PORT"/tcp
+    sudo ufw allow "$BESZEL_PORT"/tcp
     echo "y" | sudo ufw enable
 }
 
 install_beszel() {
     check_docker
+    if docker ps -a --format '{{.Names}}' | grep -qx "beszel-agent"; then
+        echo -e "${YELLOW}Beszel Agent уже установлен (контейнер beszel-agent найден).${NC}"
+        read -p "Переустановить/обновить конфигурацию Beszel Agent? [y/N]: " REINSTALL_BESZEL
+        if [[ ! "$REINSTALL_BESZEL" =~ ^[Yy]$ ]]; then
+            echo -e "${GREEN}Установка Beszel Agent пропущена.${NC}"
+            return
+        fi
+    fi
+
     mkdir -p /opt/beszel-agent && cd /opt/beszel-agent
 
     echo -e "${YELLOW}Настройка Beszel Agent${NC}"
@@ -257,6 +286,10 @@ install_beszel() {
     prompt_value B_SSH_KEY    "Публичный SSH-ключ (KEY)"        "$D_BESZEL_SSH_KEY"
     prompt_value B_TOKEN      "Универсальный токен (TOKEN)"     "$D_BESZEL_KEY"
     prompt_value B_HUB_URL    "URL хаба Beszel"                 "$D_BESZEL_HUB_URL"
+    require_value "B_LISTEN" "$B_LISTEN" || return
+    require_value "B_SSH_KEY" "$B_SSH_KEY" || return
+    require_value "B_TOKEN" "$B_TOKEN" || return
+    require_value "B_HUB_URL" "$B_HUB_URL" || return
 
     cat <<EOF > docker-compose.yml
 services:
@@ -283,7 +316,19 @@ EOF
 
 install_node() {
     check_docker
+    if docker ps -a --format '{{.Names}}' | grep -qx "remnanode"; then
+        echo -e "${YELLOW}VPN Нода уже установлена (контейнер remnanode найден).${NC}"
+        read -p "Переустановить/обновить конфигурацию ноды? [y/N]: " REINSTALL_NODE
+        if [[ ! "$REINSTALL_NODE" =~ ^[Yy]$ ]]; then
+            echo -e "${GREEN}Установка ноды пропущена.${NC}"
+            return
+        fi
+    fi
+
     mkdir -p /opt/remnanode && cd /opt/remnanode
+    if [ -f "docker-compose.yml" ]; then
+        echo -e "${YELLOW}Найден существующий /opt/remnanode/docker-compose.yml${NC}"
+    fi
     echo -e "${YELLOW}Вставьте содержимое docker-compose.yml из панели:${NC}"
     read -p "Нажмите Enter для входа в редактор..."
     nano docker-compose.yml
@@ -303,7 +348,7 @@ show_menu() {
     echo "  2) Запустить тест скорости (Multitest)"
     
     echo -e "\n${BLUE}[ УСТАНОВКА КОМПОНЕНТОВ ]${NC}"
-    echo "  3) Экспресс-установка Ноды"
+    echo "  3) Экспресс-установка Ноды "
     echo "  4) Установить только VPN Ноду"
     echo "  5) Установить Beszel Agent ($beszel_port_display)"
     
