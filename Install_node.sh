@@ -29,6 +29,8 @@ load_local_config() {
 
     for cfg in "${config_files[@]}"; do
         if [ -f "$cfg" ]; then
+            # Auto-fix Windows CRLF to avoid "$'\r': command not found" on Linux.
+            sed -i 's/\r$//' "$cfg" 2>/dev/null
             source "$cfg"
             loaded=1
         fi
