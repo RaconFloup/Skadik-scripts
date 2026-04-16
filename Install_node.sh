@@ -9,17 +9,18 @@ NC='\033[0m'
 SCRIPT_INSTALL_DIR="/opt/skadik"
 SCRIPT_INSTALL_PATH="${SCRIPT_INSTALL_DIR}/Install_node.sh"
 SCRIPT_COMMAND_PATH="/usr/local/bin/skadik"
-SCRIPT_VERSION="1.12"
+SCRIPT_VERSION="1.14"
 
 # --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 D_PANEL_IP=""
-D_NODE_PORT=""
+D_NODE_PORT=""           # Значение по умолчанию берется из конфига (2222)
 D_VLESS_PORT=""
 D_SSH_PORT=""
 D_BESZEL_PORT=""
 D_BESZEL_KEY=""          # Универсальный токен (TOKEN)
 D_BESZEL_SSH_KEY=""      # Публичный SSH-ключ (KEY)
 D_BESZEL_HUB_URL=""      # URL хаба Beszel
+D_REMNANODE_SECRET_KEY="" # Секретный ключ ноды
 
 load_local_config() {
     local script_dir
@@ -43,13 +44,14 @@ load_local_config() {
         cat > "$home_config" <<'EOF'
 # Конфиг Skadik (локальный, не добавляйте в git)
 D_PANEL_IP=""
-D_NODE_PORT=""
+D_NODE_PORT="2222"
 D_VLESS_PORT=""
 D_SSH_PORT=""
 D_BESZEL_PORT=""
 D_BESZEL_HUB_URL=""
 D_BESZEL_KEY=""
 D_BESZEL_SSH_KEY=""
+D_REMNANODE_SECRET_KEY=""
 EOF
         chmod 600 "$home_config" 2>/dev/null
         source "$home_config"
@@ -407,13 +409,36 @@ install_node() {
     fi
 
     mkdir -p /opt/remnanode && cd /opt/remnanode
-    if [ -f "docker-compose.yml" ]; then
-        echo -e "${YELLOW}Найден существующий /opt/remnanode/docker-compose.yml${NC}"
-    fi
-    echo -e "${YELLOW}Вставьте содержимое docker-compose.yml из панели:${NC}"
-    read -p "Нажмите Enter для входа в редактор..."
-    nano docker-compose.yml
+
+    echo -e "${YELLOW}Настройка VPN Ноды (remnanode)${NC}"
+    prompt_value N_PORT       "Порт ноды (Management)"          "${D_NODE_PORT:-2222}"
+    prompt_value N_SECRET_KEY "Секретный ключ (SECRET_KEY)"     "$D_REMNANODE_SECRET_KEY"
+
+    require_value "N_PORT" "$N_PORT" || return
+    require_value "N_SECRET_KEY" "$N_SECRET_KEY" || return
+
+    cat <<EOF > docker-compose.yml
+services: 
+  remnanode: 
+    container_name: remnanode 
+    hostname: remnanode 
+    image: remnawave/node:latest 
+    network_mode: host 
+    restart: always 
+    cap_add: 
+      - NET_ADMIN 
+    ulimits: 
+      nofile: 
+        soft: 1048576 
+        hard: 1048576 
+    environment: 
+      - NODE_PORT=${N_PORT}
+      - SECRET_KEY="${N_SECRET_KEY}"
+EOF
+
+    sudo docker compose down 2>/dev/null
     sudo docker compose up -d
+    echo -e "${GREEN}VPN Нода (remnanode) установлена и запущена.${NC}"
 }
 
 # --- ОСНОВНОЕ МЕНЮ ---
