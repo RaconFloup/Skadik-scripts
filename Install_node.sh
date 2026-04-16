@@ -9,6 +9,7 @@ NC='\033[0m'
 SCRIPT_INSTALL_DIR="/opt/skadik"
 SCRIPT_INSTALL_PATH="${SCRIPT_INSTALL_DIR}/Install_node.sh"
 SCRIPT_COMMAND_PATH="/usr/local/bin/skadik"
+SCRIPT_VERSION="1.12"
 
 # --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 D_PANEL_IP=""
@@ -219,6 +220,36 @@ check_status() {
 
 # --- ФУНКЦИИ СЕРВИСА ---
 
+check_for_updates() {
+    local is_manual=$1
+    # Проверяем обновления только один раз за запуск скрипта, если это не ручной вызов
+    if [ "$is_manual" != "manual" ] && [ "${CHECKED_UPDATE:-0}" -eq 1 ]; then
+        return
+    fi
+    CHECKED_UPDATE=1
+
+    echo -e "${YELLOW}Проверка обновлений...${NC}"
+    local remote_version
+    # Загружаем скрипт из GitHub и вытаскиваем версию
+    remote_version=$(curl -s -H "Accept: application/vnd.github.v3.raw" -L "https://api.github.com/repos/RaconFloup/Skadik-scripts/contents/Install_node.sh" | grep -m 1 '^SCRIPT_VERSION=' | cut -d'"' -f2)
+
+    if [[ -n "$remote_version" && "$remote_version" != "$SCRIPT_VERSION" ]]; then
+        # Сравниваем версии как числа с плавающей точкой
+        local is_newer=$(awk -v v1="$remote_version" -v v2="$SCRIPT_VERSION" 'BEGIN { if (v1 > v2) print 1; else print 0 }')
+        if [ "$is_newer" -eq 1 ]; then
+            echo -e "${GREEN}Доступна новая версия скрипта: v${remote_version} (текущая: v${SCRIPT_VERSION})${NC}"
+            read -p "Хотите обновить скрипт сейчас? [Y/n]: " DO_UPDATE
+            if [[ -z "$DO_UPDATE" || "$DO_UPDATE" =~ ^[Yy]$ ]]; then
+                update_script
+            fi
+        elif [ "$is_manual" == "manual" ]; then
+            echo -e "${GREEN}У вас установлена самая свежая версия (v${SCRIPT_VERSION}).${NC}"
+        fi
+    elif [ "$is_manual" == "manual" ]; then
+        echo -e "${GREEN}У вас установлена самая свежая версия (v${SCRIPT_VERSION}).${NC}"
+    fi
+}
+
 update_script() {
     echo -e "${YELLOW}Запрос обновления с GitHub...${NC}"
     sudo mkdir -p "$SCRIPT_INSTALL_DIR"
@@ -389,7 +420,7 @@ install_node() {
 
 show_menu() {
     local beszel_port_display="${D_BESZEL_PORT:-не задан}"
-    ui_title "SKADIK HUB - ПАНЕЛЬ УПРАВЛЕНИЯ"
+    ui_title "SKADIK HUB - ПАНЕЛЬ УПРАВЛЕНИЯ v${SCRIPT_VERSION}"
 
     ui_section "МОНИТОРИНГ"
     ui_option "1" "Проверить состояние и доступность портов"
@@ -408,7 +439,8 @@ show_menu() {
 
     echo
     ui_section "ОБСЛУЖИВАНИЕ"
-    ui_option "8" "Обновить этот скрипт"
+    ui_option "8" "Проверить обновления скрипта"
+    ui_option "9" "Принудительно обновить скрипт"
     ui_option "0" "Выход"
 
     ui_line
@@ -423,7 +455,8 @@ show_menu() {
         5) install_beszel ;;
         6) install_network_opt ;;
         7) install_firewall ;;
-        8) update_script ;;
+        8) check_for_updates manual ;;
+        9) update_script ;;
         0) exit 0 ;;
         *) echo -e "${RED}Ошибка: неверный выбор${NC}"; sleep 1 ;;
     esac
@@ -433,6 +466,7 @@ while true; do
     clear
     ensure_global_command
     load_local_config
+    check_for_updates
     show_menu
     echo -e "\n${YELLOW}Нажмите Enter, чтобы вернуться в меню...${NC}"
     read -r
